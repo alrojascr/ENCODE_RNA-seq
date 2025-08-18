@@ -1,0 +1,148 @@
+title: "OSA RNA-seq pipeline"
+report_comment: "Integrative Analysis of Genome-Wide Epigenetic and Transcriptomic Alterations Reveals Molecular Markers for Diagnosing Pediatric Obstructive Sleep Apnea in Black Females"
+report_header_info:
+  - Name: "Alexis Felipe Rojas"
+  - Contact E-mail: "alexis_rojasc@javeriana.edu.co"
+  - Application Type: "RNA-seq"
+show_analysis_paths: False
+show_analysis_time: False
+export_plots: false
+disable_version_detection: true
+
+# Run only these modules
+run_modules:
+  - custom_content
+  - fastqc
+  - fastq_screen
+  - sortmerna
+  - star
+  - rsem
+  - samtools
+  - picard
+  - preseq
+  - rseqc
+  - qualimap
+  - featurecounts
+
+rseqc_sections:
+  - read_distribution
+  - inner_distance
+  - read_duplication
+  - junction_annotation
+  - junction_saturation
+  - infer_experiment
+  - bam_stat
+
+# Order of modules
+module_order:
+  - fastqc:
+      anchor: "fastqc_raw"
+      name: "FastQC (raw)"
+      info: "This section of the report shows FastQC results before adapter trimming."
+      path_filters:
+        - "/opt/data/HPC01A/alexis_rojasc/OSA_RNA-seq/Quality_control/FastQC_Raw/FastQC_Output/*_fastqc*.zip"
+  - fastq_screen:
+      anchor: "fastq-screen_raw"
+      name: "FastQ_Screen (raw)"
+      info: "This section of the report shows FastQ_Screen results before adapter trimming."
+      path_filters:
+        - "/opt/data/HPC01A/alexis_rojasc/OSA_RNA-seq/Quality_control/FastQ_Screen/FastQ_Screen_Output/**/*_screen.txt"
+  - fastqc:
+      anchor: "fastqc_trimmed"
+      name: "FastQC (trimmed)"
+      info: "This section of the report shows FastQC results after adapter trimming."
+      path_filters:
+        - "/opt/data/HPC01A/alexis_rojasc/OSA_RNA-seq/Quality_control/FastQC_Clean/FastQC_Output/*_fastqc*.zip"
+  - sortmerna:
+      anchor: "sortmerna"
+      name: "SortMeRNA"
+      info: "This section of the report shows SortMeRNA results for ribosomal RNA removal."
+      path_filters:
+        - "/opt/data/HPC01A/alexis_rojasc/OSA_RNA-seq/RNA_ribosomal/SortMeRNA/sortmerna_output/**"
+  - fastq_screen:
+      anchor: "fastq-screen-sort_trimmed"
+      name: "FastQ_Screen (sort_trimmed)"
+      info: "This section of the report shows FastQ_Screen results after ribosomal RNA removal using SortMeRNA."
+      path_filters:
+        - "/opt/data/HPC01A/alexis_rojasc/OSA_RNA-seq/RNA_ribosomal/FastQ_Screen/SortMeRNA/FastQ_Screen_Output/**/*_screen.txt"
+  - fastq_screen:
+      anchor: "fastq-screen-ribo_trimmed"
+      name: "FastQ_Screen (ribo_trimmed)"
+      info: "This section of the report shows FastQ_Screen results after ribosomal RNA removal using Ribodetector."
+      path_filters:
+        - "/opt/data/HPC01A/alexis_rojasc/OSA_RNA-seq/RNA_ribosomal/FastQ_Screen/Ribodetector/FastQ_Screen_Output/**/*_screen.txt"
+  - star:
+      anchor: "star"
+      name: "STAR Alignments"
+      info: "This section shows the STAR alignment results."
+      #path_filters:
+       # - "/opt/data/HPC01A/alexis_rojasc/OSA_RNA-seq/Mapping/STAR/output/**"
+  - rsem:
+      anchor: "rsem"
+      name: "RSEM Quantification"
+      info: "This section shows the RSEM quantification results."
+      #path_filters:
+       # - "/opt/data/HPC01A/alexis_rojasc/OSA_RNA-seq/Quantification/RSEM/**"
+  - samtools:
+      anchor: "samtools"
+      name: "Samtools"
+      info: "This section shows Samtools alignment results and stats."
+      path_filters:
+        - "/opt/data/HPC01A/alexis_rojasc/OSA_RNA-seq/Quality_mapping/genome/Samtools/**"
+  - picard:
+      anchor: "picard_markduplicates"
+      name: "Picard MarkDuplicates"
+      info: "This section shows Picard MarkDuplicates results and statistics."
+      path_filters:
+        - "/opt/data/HPC01A/alexis_rojasc/OSA_RNA-seq/Quality_mapping/genome/Picard/Duplicates/*metrics.txt"
+  - preseq:
+      anchor: "preseq"
+      name: "Preseq"
+      info: "This section shows Preseq results related to sequencing depth and complexity."
+      path_filters:
+        - "/opt/data/HPC01A/alexis_rojasc/OSA_RNA-seq/Quality_mapping/genome/Preseq/lc_extrap/*"
+  - rseqc:
+      anchor: "rseqc"
+      name: "RSeQC"
+      info: "This section shows RSeQC results for quality control and mapping analysis."
+      path_filters:
+        - "/opt/data/HPC01A/alexis_rojasc/OSA_RNA-seq/Quality_mapping/genome/RSeQC/**"
+  - qualimap:
+      anchor: "qualimap"
+      name: "Qualimap"
+      info: "This section shows Qualimap results for alignment and mapping quality."
+      path_filters:
+        - "/opt/data/HPC01A/alexis_rojasc/OSA_RNA-seq/Quality_mapping/genome/Qualimap/qualimap_results/**"
+  - featurecounts:
+      anchor: "featurecounts"
+      name: "FeatureCounts Biotype"
+      info: "This section shows the FeatureCounts biotype results."
+      path_filters:
+        - "/opt/data/HPC01A/alexis_rojasc/OSA_RNA-seq/Gene_biotype/feature_results/*.summary"
+
+# Trimming extensions
+extra_fn_clean_exts:
+  - "_screen"
+  - ".non_rRNA_reads"
+  - ".nonrrna"
+  - "_readgroup"
+  - "_read_distribution"
+  - "_infer_experiment"
+  - "_bam_stat"
+
+# Listing software versions
+software_versions:
+  fastqc: "0.12.1"
+  fastq_screen: "0.16.0"
+  trimmomatic: "0.36"
+  sortmerna: "4.3.7"
+  ribodetector: "0.3.1"
+  star: "2.7.11b"
+  rsem: "1.3.3"
+  samtools: "1.21"
+  picard: "3.3.0"
+  preseq: "3.2.0"
+  rseqc: "5.0.3"
+  qualimap: "2.2.2a"
+  featurecounts: "2.0.8"
+
