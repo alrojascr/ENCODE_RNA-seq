@@ -220,6 +220,7 @@ Execute pipeline scripts on an HPC cluster using SLURM:
 
 ```bash
 sbatch <script_name>.sh
+```
 
 ## Acknowledgements
 
