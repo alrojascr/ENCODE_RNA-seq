@@ -8,7 +8,6 @@ This pipeline provides a comprehensive framework for analyzing RNA sequencing (R
 - [Ribosomal RNA Filtering](#ribosomal-rna-filtering)
 - [Mapping](#mapping)
 - [Mapping Quality](#mapping-quality)
-- [Gene Biotype Analysis](#gene-biotype-analysis)
 - [Quantification](#quantification)
 - [MultiQC](#multiqc)
 - [How to Run](#how-to-run)
@@ -169,21 +168,6 @@ This pipeline provides a comprehensive framework for analyzing RNA sequencing (R
       -gtf annotation.gtf \
       -outdir qualimap_results \
       -pe
-    ```
-
-## Gene Biotype Analysis
-**Description:** Classification and quantification of reads by gene biotype categories.
-
-**Tools:**
-- **featureCounts**
-  - **Description:** Efficient read counting with biotype classification.
-  - **GitHub Repository:** [featureCounts GitHub](https://github.com/subreadteam/subread)
-  - **Command Example:
-    ```bash
-    featureCounts -a annotation.gtf \
-    -o gene_counts.txt \
-    -t exon -g gene_biotype \
-    aligned.bam
     ```
 
 ## Quantification
