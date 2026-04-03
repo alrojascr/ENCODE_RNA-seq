@@ -1,73 +1,149 @@
 #!/bin/bash
-#SBATCH --job-name=sortmerna           
-#SBATCH --output=sortmerna_%A.out      
-#SBATCH --error=sortmerna_%A.err
-#SBATCH --nodelist=pujnodo0       
-#SBATCH --cpus-per-task=10
-#SBATCH --mem=19G
-#SBATCH --partition=debug             
+#SBATCH --job-name=SortMeRNA
+#SBATCH --output=SortMeRNA_%j.out
+#SBATCH --error=SortMeRNA_%j.err
+#SBATCH --nodelist=nodei-2
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=36
+#SBATCH --mem=150G
+#SBATCH --time=15-00:00:00
+#SBATCH --partition=medium
 
-# Start time measurement
+# ==================================================
+# Strict bash mode (exit on error, undefined vars, pipe failures)
+# ==================================================
+set -euo pipefail
+
+# ==================================================
+# Start runtime measurement
+# ==================================================
 START_TIME=$(date +%s)
 
-# Input and output directories
-FASTQ_DIR="/opt/data/HPC01A/alexis_rojasc/OSA_RNA-seq/RNA_ribosomal/Trim_fastq"
-DATABASE_DIR="/opt/data/HPC01A/alexis_rojasc/OSA_RNA-seq/RNA_ribosomal/SortMeRNA/rRNA_databases_v4"
-OUTPUT_DIR="./sortmerna_output"
-IDX_DIR="/opt/data/HPC01A/alexis_rojasc/OSA_RNA-seq/RNA_ribosomal/SortMeRNA/rRNA_databases_v4/idx"
+# ==================================================
+# Define input, database, index and output directories
+# ==================================================
+FASTQ_DIR="/hpcfs/home/cursos/s.abril01/RNA-seq/Odon/Quality_control/FastP/Results"
+DATABASE_DIR="/hpcfs/home/cursos/s.abril01/RNA-seq/Odon/rRNA_removal/SortMeRNA/rRNA_databases_v4"
+OUTPUT_DIR="/hpcfs/home/cursos/s.abril01/RNA-seq/Odon/rRNA_removal/SortMeRNA/Results"
+IDX_DIR="/hpcfs/home/cursos/s.abril01/RNA-seq/Odon/rRNA_removal/SortMeRNA/rRNA_databases_v4/idx"
 
-# Create the output directory
+# Create output and idx directory if missing
 mkdir -p "$OUTPUT_DIR"
+mkdir -p "$IDX_DIR"
 
-# Loop through FASTQ files
-for FASTQ_FILE1 in "$FASTQ_DIR"/*_1.fastq; do
-    # Define the second file in the pair (for _1, the pair is _2)
-    FASTQ_FILE2="${FASTQ_FILE1/_1.fastq/_2.fastq}"
-    
-    # Check if R2 file exists
+# ==================================================
+# Enable safe globbing (avoid literal patterns if no files exist)
+# ==================================================
+shopt -s nullglob
+
+# ==================================================
+# Check if SortMeRNA index directory is empty
+# ==================================================
+if [ -z "$(ls -A "$IDX_DIR" 2>/dev/null)" ]; then
+    echo "[INFO] WARNING: IDX directory is empty."
+    echo "[INFO] SortMeRNA will build indexes automatically (first run may be slow)."
+fi
+
+# ==================================================
+# Main loop: Detect R1 FASTQ files (supports fastq, fastq.gz, fq.gz)
+# ==================================================
+for FASTQ_FILE1 in "$FASTQ_DIR"/*_1.{fastq,fastq.gz,fq.gz}; do
+
+    [[ -e "$FASTQ_FILE1" ]] || continue
+
+    # Detect paired R2 file automatically
+    FASTQ_FILE2="${FASTQ_FILE1/_1./_2.}"
+
     if [[ ! -f "$FASTQ_FILE2" ]]; then
-        echo "Warning: Pair for $FASTQ_FILE1 not found. Skipping."
+        echo "[WARNING] Pair not found for $FASTQ_FILE1"
         continue
     fi
 
-    BASENAME=$(basename "$FASTQ_FILE1" _1.fastq)
+    # ==================================================
+    # Extract sample name
+    # ==================================================
+    BASENAME=$(basename "$FASTQ_FILE1")
+    BASENAME=${BASENAME%%_1.*}
+    BASENAME=${BASENAME%_trimmed}
 
+    # ==================================================
+    # Define per-sample output directories
+    # ==================================================
     SAMPLE_OUTPUT_DIR="$OUTPUT_DIR/$BASENAME"
-    
-    # Create output subdirectories for rRNA and non-rRNA
     rRNA_DIR="$SAMPLE_OUTPUT_DIR/rRNA"
     non_rRNA_DIR="$SAMPLE_OUTPUT_DIR/non_rRNA"
+
     mkdir -p "$rRNA_DIR" "$non_rRNA_DIR"
 
-    echo "Processing $FASTQ_FILE1 and $FASTQ_FILE2..."
+    echo "[INFO] Processing sample: $BASENAME"
 
-    # Run the SortMeRNA command for each reference
-    sortmerna --ref "$DATABASE_DIR/smr_v4.3_fast_db.fasta" \
-              --ref "$DATABASE_DIR/smr_v4.3_default_db.fasta" \
-              --ref "$DATABASE_DIR/smr_v4.3_sensitive_db.fasta" \
-              --ref "$DATABASE_DIR/smr_v4.3_sensitive_db_rfam_seeds.fasta" \
-              --reads "$FASTQ_FILE1" \
-              --reads "$FASTQ_FILE2" \
-              --workdir "$SAMPLE_OUTPUT_DIR" \
-              --idx-dir "$IDX_DIR" \
-              --paired_in \
-              --fastx \
-              --aligned "$rRNA_DIR/${BASENAME}_1" \
-              --out2 "$rRNA_DIR/${BASENAME}_2" \
-              --other "$non_rRNA_DIR/${BASENAME}_1" \
-              --out2 "$non_rRNA_DIR/${BASENAME}_2" \
-              --threads 10
+    # ==================================================
+    # Run SortMeRNA rRNA filtering
+    # ==================================================
+    sortmerna \
+        --ref "$DATABASE_DIR/smr_v4.3_fast_db.fasta" \
+        --ref "$DATABASE_DIR/smr_v4.3_default_db.fasta" \
+        --ref "$DATABASE_DIR/smr_v4.3_sensitive_db.fasta" \
+        --ref "$DATABASE_DIR/smr_v4.3_sensitive_db_rfam_seeds.fasta" \
+        --reads "$FASTQ_FILE1" \
+        --reads "$FASTQ_FILE2" \
+        --workdir "$SAMPLE_OUTPUT_DIR" \
+        --idx-dir "$IDX_DIR" \
+        --paired_in \
+        --fastx \
+        --aligned "$rRNA_DIR/${BASENAME}" \
+        --out2 "$rRNA_DIR/${BASENAME}" \
+        --other "$non_rRNA_DIR/${BASENAME}" \
+        --out2 "$non_rRNA_DIR/${BASENAME}" \
+        --threads 36
 
-    echo "Finished processing $BASENAME. Output saved to $SAMPLE_OUTPUT_DIR."
+    echo "[INFO] SortMeRNA completed for $BASENAME"
+
+    # ==================================================
+    # Rename non_rRNA output files to standard R1/R2 naming
+    # ==================================================
+    shopt -s nullglob
+    files=("$non_rRNA_DIR"/*.fq.gz "$non_rRNA_DIR"/*.fastq.gz)
+
+    for file in "${files[@]}"; do
+        filename=$(basename "$file")
+
+        if [[ "$filename" == *_fwd.f*q.gz ]]; then
+            newname="${filename/_fwd/_1}"
+
+        elif [[ "$filename" == *_rev.f*q.gz ]]; then
+            newname="${filename/_rev/_2}"
+
+        else
+            continue
+        fi
+
+        if [[ -f "$non_rRNA_DIR/$newname" ]]; then
+            echo "[INFO] Target exists, skipping: $newname"
+            continue
+        fi
+
+        mv "$file" "$non_rRNA_DIR/$newname"
+        echo "[INFO] Renamed: $filename → $newname"
+    done
+
+    echo "[INFO] Rename completed for $BASENAME"
+    echo ""
 
 done
 
-# End time measurement
-END_TIME=$(date +%s)
+# ==================================================
+# Disable nullglob (restore default shell behavior)
+# ==================================================
+shopt -u nullglob
 
-# Calculate total elapsed time
+# ==================================================
+# Report total runtime
+# ==================================================
+END_TIME=$(date +%s)
 ELAPSED_TIME=$((END_TIME - START_TIME))
 
-# Print total execution time in seconds
-echo "Total execution time: $ELAPSED_TIME seconds"
+echo "[INFO] Total execution time: $ELAPSED_TIME seconds"
 
