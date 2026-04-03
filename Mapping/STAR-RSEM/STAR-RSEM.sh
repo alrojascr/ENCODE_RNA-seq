@@ -1,94 +1,112 @@
 #!/bin/bash
-#SBATCH --job-name=STAR-RSEM_pipeline
+#SBATCH --job-name=STAR-RSEM
 #SBATCH --output=STAR-RSEM_%j.out
 #SBATCH --error=STAR-RSEM_%j.err
-#SBATCH --exclude=pujnodo0
+#SBATCH --nodelist=nodei-3
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=19G  
-#SBATCH --partition=debug
+#SBATCH --cpus-per-task=24
+#SBATCH --mem=150G
+#SBATCH --time=15-00:00:00
+#SBATCH --partition=medium
+
+# =============================
+# CONFIG
+# =============================
+THREADS=24
 
 # Record start time
 start_time=$(date +%s)
 
-# Define directories as variables
-fastq="/opt/data/HPC01A/alexis_rojasc/OSA_RNA-seq/Mapping/STAR-RSEM/data"
-genome_fasta="/opt/data/HPC01A/alexis_rojasc/OSA_RNA-seq/Mapping/STAR-RSEM/genome/GRCh38.p14.genome.fa"
-genome_anno="/opt/data/HPC01A/alexis_rojasc/OSA_RNA-seq/Mapping/STAR-RSEM/genome/GRCh38.p14.genome.gtf"
-rsem_idx="/opt/data/HPC01A/alexis_rojasc/OSA_RNA-seq/Mapping/STAR-RSEM/genome/rsem_idx"
-output="/opt/data/HPC01A/alexis_rojasc/OSA_RNA-seq/Mapping/STAR-RSEM/output"
+# Define directories
+fastq="/hpcfs/home/cursos/s.abril01/RNA-seq/Odon/Mapping/STAR-RSEM/Data"
+genome_fasta="/hpcfs/home/cursos/s.abril01/RNA-seq/Odon/Mapping/STAR-RSEM/Genome/GRCh38.p14.genome.fa"
+genome_anno="/hpcfs/home/cursos/s.abril01/RNA-seq/Odon/Mapping/STAR-RSEM/Genome/GRCh38.p14.genome.gtf"
+rsem_idx="/hpcfs/home/cursos/s.abril01/RNA-seq/Odon/Mapping/STAR-RSEM/Genome/rsem_idx"
+output="/hpcfs/home/cursos/s.abril01/RNA-seq/Odon/Mapping/STAR-RSEM/Results"
+
 rsem_output="${output}/RSEM_results"
 genome_bam="${output}/genome_bam"
 transcriptome_bam="${output}/transcriptome_bam"
 
-# Ensure output directories exist
+# Create output directories
 mkdir -p "$output" "$rsem_output" "$genome_bam" "$transcriptome_bam"
 
-# Prepare RSEM reference if not already done
-if [ ! -d "$rsem_idx" ]; then
-    echo "Creating RSEM reference directory: $rsem_idx"
+# =============================
+# PREPARE RSEM REFERENCE
+# =============================
+if [ ! -f "$rsem_idx/rsem_reference.grp" ]; then
+    echo "Creating RSEM reference..."
+
     mkdir -p "$rsem_idx"
 
-    echo "Running rsem-prepare-reference..."
     rsem-prepare-reference \
         --gtf "$genome_anno" \
         --star \
         --star-sjdboverhang 149 \
-        --num-threads 12 \
+        --num-threads $THREADS \
         "$genome_fasta" \
         "$rsem_idx/rsem_reference"
+
 else
-    echo "RSEM reference directory already exists."
+    echo "RSEM reference already exists."
 fi
 
-# Loop over all paired-end .fastq files in the fastq directory
-for fastq_file_R1 in "$fastq"/*_1.fq; do
-    # Determine the corresponding R2 file
-    fastq_file_R2="${fastq_file_R1/_1.fq/_2.fq}"
-    echo "Checking files: $fastq_file_R1 and $fastq_file_R2"
+# =============================
+# STAR + RSEM PER SAMPLE
+# =============================
+for fastq_file_R1 in "$fastq"/*_1.fq.gz; do
+    # Ensure the file exists (prevents literal string errors if no files match)
+    [ -e "$fastq_file_R1" ] || continue
+
+    # Construct R2 name by replacing _1. with _2.
+    fastq_file_R2="${fastq_file_R1%_1.fq.gz}_2.fq.gz"
+
     if [ ! -f "$fastq_file_R2" ]; then
-        echo "Error: Paired file for $(basename "$fastq_file_R1") not found. Skipping..."
+        echo "Error: Pair $fastq_file_R2 not found for $fastq_file_R1"
         continue
     fi
 
-    base_name=$(basename "$fastq_file_R1" _1.fq)
-    echo "Running STAR alignment for $base_name..."
+    base_name=$(basename "$fastq_file_R1" _1.fq.gz)
 
-    # Run STAR alignment with added and previous parameters
-    STAR --runMode alignReads \
-         --runThreadN 12 \
-         --genomeDir "$rsem_idx" \
-         --readFilesIn "$fastq_file_R1" "$fastq_file_R2" \
-         --sjdbScore 1 \
-         --outFileNamePrefix "$output"/"$base_name"_ \
-         --outSAMtype BAM SortedByCoordinate \
-         --outSAMstrandField intronMotif \
-         --outSAMattributes NH HI AS NM MD \
-         --outSAMunmapped Within \
-         --outSAMattrRGline ID:$base_name CN:Oxford SM:$base_name PL:illumina \
-         --outSAMheaderHD @HD VN:1.4 SO:coordinate \
-         --outFilterType BySJout \
-         --outFilterMultimapNmax 20 \
-         --outFilterMismatchNmax 999 \
-         --outFilterMismatchNoverReadLmax 0.04 \
-         --alignSJoverhangMin 8 \
-         --alignSJDBoverhangMin 1 \
-         --alignIntronMin 20 \
-         --alignIntronMax 1000000 \
-         --alignMatesGapMax 1000000 \
-         --quantMode TranscriptomeSAM \
-         --limitBAMsortRAM 10000000000
-    # Move STAR outputs to respective directories
-    mv "$output"/"$base_name"_Aligned.sortedByCoord.out.bam "${genome_bam}/"
-    mv "$output"/"$base_name"_Aligned.toTranscriptome.out.bam "${transcriptome_bam}/"
+    echo "==============================="
+    echo "Processing sample: $base_name"
+    echo "==============================="
 
-    echo "Running RSEM calculation for $base_name..."
-    
-    # Run rsem-calculate-expression
+    # ---------- STAR ----------
+    STAR \
+        --runMode alignReads \
+        --runThreadN $THREADS \
+        --genomeDir "$rsem_idx" \
+        --readFilesIn "$fastq_file_R1" "$fastq_file_R2" \
+        --readFilesCommand zcat \
+        --sjdbScore 1 \
+        --outFileNamePrefix "$output/${base_name}_" \
+        --outSAMtype BAM SortedByCoordinate \
+        --outSAMstrandField intronMotif \
+        --outSAMattributes NH HI AS NM MD \
+        --outSAMunmapped Within \
+        --outSAMattrRGline ID:$base_name CN:Oxford SM:$base_name PL:illumina \
+        --outFilterType BySJout \
+        --outFilterMultimapNmax 20 \
+        --outFilterMismatchNmax 999 \
+        --outFilterMismatchNoverReadLmax 0.04 \
+        --alignSJoverhangMin 8 \
+        --alignSJDBoverhangMin 1 \
+        --alignIntronMin 20 \
+        --alignIntronMax 1000000 \
+        --alignMatesGapMax 1000000 \
+        --quantMode TranscriptomeSAM \
+        --limitBAMsortRAM 80000000000
+
+    # Move STAR outputs
+    mv "$output/${base_name}_Aligned.sortedByCoord.out.bam" "$genome_bam/"
+    mv "$output/${base_name}_Aligned.toTranscriptome.out.bam" "$transcriptome_bam/"
+
+    # ---------- RSEM ----------
     rsem-calculate-expression \
-        --num-threads 12 \
+        --num-threads $THREADS \
         --strandedness none \
         --alignments \
         --paired-end \
@@ -97,12 +115,17 @@ for fastq_file_R1 in "$fastq"/*_1.fq; do
         --no-bam-output \
         "$rsem_idx/rsem_reference" \
         "${rsem_output}/${base_name}"
-    
-    echo "RSEM processing complete for $base_name."
+
+    echo "Finished sample: $base_name"
 done
 
-# Record end time
+# =============================
+# END TIMER
+# =============================
 end_time=$(date +%s)
-execution_time=$((end_time - start_time))
-echo "Execution Time: $execution_time seconds"
+runtime=$((end_time - start_time))
+
+echo "=================================="
+echo "Total runtime: $runtime seconds"
+echo "=================================="
 
